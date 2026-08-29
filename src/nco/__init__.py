@@ -2,10 +2,16 @@
 
 from nco.evaluation import evaluate_batch, optimality_gap
 from nco.heuristics import nearest_neighbor, two_opt
-from nco.problems.tsp import generate_euclidean_tsp, is_valid_tour, tour_length
+from nco.problems.tsp import (
+    generate_clustered_tsp,
+    generate_euclidean_tsp,
+    is_valid_tour,
+    tour_length,
+)
 
 __all__ = [
     "evaluate_batch",
+    "generate_clustered_tsp",
     "generate_euclidean_tsp",
     "is_valid_tour",
     "nearest_neighbor",
