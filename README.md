@@ -28,7 +28,9 @@ This is an educational/research implementation, not a reproduction claiming pape
 - REINFORCE training with moving-average or rollout baseline
 - Optimality-gap evaluation against exact solutions
 - Size and distribution generalization benchmarks
-- Unit tests for decoding, baselines, exact optimization, and shifted data generation
+- Repeated-seed statistical benchmarking with mean, sample standard deviation, and 95% confidence intervals
+- Normalized-regret reporting against exact optima
+- Unit tests for decoding, baselines, exact optimization, shifted data generation, and statistics
 - GitHub Actions CI with pytest and Ruff
 
 ## Project structure
@@ -42,11 +44,13 @@ This is an educational/research implementation, not a reproduction claiming pape
 │   ├── decoding.py
 │   ├── heuristics.py
 │   ├── exact.py
-│   └── evaluation.py
+│   ├── evaluation.py
+│   └── statistics.py
 ├── scripts/
 │   ├── train.py
 │   ├── evaluate.py
-│   └── benchmark_generalization.py
+│   ├── benchmark_generalization.py
+│   └── benchmark_statistics.py
 ├── tests/
 ├── .github/workflows/ci.yml
 ├── pyproject.toml
@@ -157,6 +161,33 @@ Two shifts are intentionally separated:
 
 The clustered generator samples random cluster centers and places nodes around those centers with Gaussian noise, clipped to the unit square. Use `--clusters` and `--cluster-std` to control the shift severity.
 
+## Repeated-seed statistical benchmark
+
+Single-seed results can be misleading for stochastic neural optimization. The repeated-seed benchmark therefore evaluates the same model and baselines across multiple independently generated test sets and reports mean, sample standard deviation, and a normal-approximation 95% confidence interval.
+
+For small instances where exact Held-Karp evaluation is feasible:
+
+```bash
+python scripts/benchmark_statistics.py \
+  --nodes 10 \
+  --instances 16 \
+  --seeds 10 \
+  --rollouts 16 \
+  --checkpoint checkpoints/nco_tsp.pt
+```
+
+The first table summarizes repeated-seed mean costs and exact optimality gaps. The second table reports normalized regret for neural greedy decoding, multi-start decoding, nearest neighbor, and 2-opt.
+
+Normalized regret is
+
+\[
+R(z,z^*)=\frac{z-z^*}{z^*}.
+\]
+
+Unlike raw tour cost, normalized regret is dimensionless and therefore easier to compare across repeated experiments with different absolute optimum values. A value of `0.05` means the solution is 5% above the exact optimum on average.
+
+The reported confidence interval is descriptive rather than a formal claim of normality; it is intended to make run-to-run variability visible instead of hiding it behind a single average.
+
 ## What is optimized?
 
 For coordinates \(x_i \in \mathbb{R}^2\), a tour \(\pi\) has cost
@@ -194,7 +225,7 @@ ruff format --check .
 
 ## Research roadmap
 
-Planned extensions include normalized regret/generalization summaries, CVRP support, learned improvement operators, benchmark datasets beyond synthetic Euclidean instances, and stronger rollout-baseline update tests.
+Planned extensions include CVRP support, learned improvement operators, benchmark datasets beyond synthetic Euclidean instances, and stronger rollout-baseline update tests.
 
 ## References
 
