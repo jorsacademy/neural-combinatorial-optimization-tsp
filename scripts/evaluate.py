@@ -16,6 +16,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--instances", type=int, default=128)
     parser.add_argument("--seed", type=int, default=123)
     parser.add_argument("--checkpoint", type=Path)
+    parser.add_argument("--rollouts", type=int, default=1, help="Number of sampled multi-start rollouts.")
     parser.add_argument(
         "--exact",
         action="store_true",
@@ -32,6 +33,8 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    if args.rollouts < 1:
+        raise ValueError("--rollouts must be at least 1")
     torch.manual_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = AttentionTSPPolicy().to(device)
@@ -46,6 +49,7 @@ def main() -> None:
         coords,
         exact=args.exact,
         max_exact_nodes=args.max_exact_nodes,
+        num_rollouts=args.rollouts,
     )
     for key, value in metrics.items():
         print(f"{key}: {value:.6f}")

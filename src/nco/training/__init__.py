@@ -1,3 +1,3 @@
-from nco.training.reinforce import MovingAverageBaseline, reinforce_step
+from nco.training.reinforce import MovingAverageBaseline, RolloutBaseline, reinforce_step
 
-__all__ = ["MovingAverageBaseline", "reinforce_step"]
+__all__ = ["MovingAverageBaseline", "RolloutBaseline", "reinforce_step"]
