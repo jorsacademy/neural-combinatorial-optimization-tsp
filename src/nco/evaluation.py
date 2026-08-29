@@ -1,4 +1,4 @@
-"""Evaluation helpers for learned and classical TSP solvers."""
+"""Evaluation helpers for learned, heuristic, and exact TSP solvers."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import time
 import torch
 from torch import Tensor, nn
 
+from nco.exact import held_karp
 from nco.heuristics import nearest_neighbor, two_opt
 from nco.problems.tsp import is_valid_tour, tour_length
 
@@ -19,8 +20,14 @@ def optimality_gap(cost: Tensor, optimum: Tensor) -> Tensor:
 
 
 @torch.inference_mode()
-def evaluate_batch(model: nn.Module, coords: Tensor) -> dict[str, float]:
-    """Evaluate greedy neural decoding against nearest-neighbor and 2-opt baselines."""
+def evaluate_batch(
+    model: nn.Module,
+    coords: Tensor,
+    *,
+    exact: bool = False,
+    max_exact_nodes: int = 12,
+) -> dict[str, float]:
+    """Evaluate greedy neural decoding against heuristic and optional exact baselines."""
     model.eval()
 
     started = time.perf_counter()
@@ -38,7 +45,7 @@ def evaluate_batch(model: nn.Module, coords: Tensor) -> dict[str, float]:
     two_opt_seconds = time.perf_counter() - started
     opt_cost = tour_length(coords, opt_tour)
 
-    return {
+    metrics = {
         "neural_mean_cost": float(neural_cost.mean()),
         "nearest_neighbor_mean_cost": float(nn_cost.mean()),
         "two_opt_mean_cost": float(opt_cost.mean()),
@@ -47,3 +54,24 @@ def evaluate_batch(model: nn.Module, coords: Tensor) -> dict[str, float]:
         "nearest_neighbor_seconds": nn_seconds,
         "two_opt_seconds": two_opt_seconds,
     }
+
+    if exact:
+        started = time.perf_counter()
+        exact_tour, exact_cost = held_karp(coords, max_nodes=max_exact_nodes)
+        exact_seconds = time.perf_counter() - started
+        if not bool(is_valid_tour(exact_tour).all()):
+            raise RuntimeError("exact solver returned an invalid tour")
+
+        metrics.update(
+            {
+                "exact_mean_cost": float(exact_cost.mean()),
+                "exact_seconds": exact_seconds,
+                "neural_mean_gap_pct": float(optimality_gap(neural_cost, exact_cost).mean()),
+                "nearest_neighbor_mean_gap_pct": float(
+                    optimality_gap(nn_cost, exact_cost).mean()
+                ),
+                "two_opt_mean_gap_pct": float(optimality_gap(opt_cost, exact_cost).mean()),
+            }
+        )
+
+    return metrics

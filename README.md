@@ -1,12 +1,12 @@
 # Neural Combinatorial Optimization for TSP
 
-A compact research-oriented implementation of **Neural Combinatorial Optimization (NCO)** for the Euclidean Traveling Salesman Problem (TSP), combining attention-based neural policies, reinforcement learning, classical heuristics, and OR-style evaluation.
+A compact research-oriented implementation of **Neural Combinatorial Optimization (NCO)** for the Euclidean Traveling Salesman Problem (TSP), combining attention-based neural policies, reinforcement learning, classical heuristics, exact dynamic programming, and OR-style evaluation.
 
 > **License:** source-available for non-commercial use only. See `LICENSE`.
 
 ## Why this repository exists
 
-Neural Combinatorial Optimization studies how learned policies can construct or improve solutions to combinatorial optimization problems. This repository focuses on the TSP as a controlled testbed and deliberately compares learned solutions against classical baselines instead of reporting neural results in isolation.
+Neural Combinatorial Optimization studies how learned policies can construct or improve solutions to combinatorial optimization problems. This repository focuses on the TSP as a controlled testbed and deliberately compares learned solutions against classical and exact baselines instead of reporting neural results in isolation.
 
 The implementation is inspired by the research line around:
 
@@ -23,11 +23,12 @@ This is an educational/research implementation, not a reproduction claiming pape
 - Tour-length and feasibility utilities
 - Nearest-neighbor baseline
 - 2-opt local search baseline
+- Exact Held-Karp dynamic programming for small instances
 - Transformer-style encoder with attention decoder
 - Greedy and sampling decoding
 - REINFORCE training with a moving-average baseline
-- Evaluation with heuristic comparisons and optimality-gap support when an exact optimum is available
-- Unit tests for feasibility, decoding, geometry, and heuristics
+- Optimality-gap evaluation against exact solutions
+- Unit tests for feasibility, decoding, geometry, heuristics, and exact optimization
 - GitHub Actions CI with pytest and Ruff
 
 ## Project structure
@@ -39,6 +40,7 @@ This is an educational/research implementation, not a reproduction claiming pape
 │   ├── models/policy.py
 │   ├── training/reinforce.py
 │   ├── heuristics.py
+│   ├── exact.py
 │   └── evaluation.py
 ├── scripts/
 │   ├── train.py
@@ -75,6 +77,14 @@ python scripts/evaluate.py --nodes 20 --instances 128
 python scripts/evaluate.py --nodes 20 --instances 128 --checkpoint checkpoints/nco_tsp.pt
 ```
 
+For small instances, add an exact Held-Karp benchmark and report optimality gaps:
+
+```bash
+python scripts/evaluate.py --nodes 10 --instances 32 --exact
+```
+
+Held-Karp has exponential complexity, so exact evaluation is capped at 12 nodes by default. The cap can be changed explicitly with `--max-exact-nodes`, but increasing it can become expensive quickly.
+
 ## What is optimized?
 
 For coordinates \(x_i \in \mathbb{R}^2\), a tour \(\pi\) has cost
@@ -92,22 +102,29 @@ The neural policy defines a distribution over permutations. REINFORCE minimizes 
 
 where \(b\) is a moving-average baseline.
 
-## OR-style evaluation
+## Exact benchmark
 
-A learned optimizer should be assessed on more than inference speed. This project reports:
+For small instances the repository uses Held-Karp dynamic programming, which solves TSP exactly in \(O(n^2 2^n)\) time. Exact solutions provide a proper OR benchmark rather than relying only on relative comparisons between heuristics.
 
-- mean tour length,
+The evaluator can report:
+
+- neural mean tour cost,
+- nearest-neighbor mean tour cost,
+- 2-opt mean tour cost,
+- exact mean tour cost,
 - feasibility rate,
-- comparison with nearest neighbor,
-- comparison with nearest neighbor + 2-opt,
-- inference time,
-- and, where exact solutions are available, optimality gap:
+- runtime for each method,
+- neural optimality gap,
+- nearest-neighbor optimality gap,
+- 2-opt optimality gap.
+
+For an obtained cost \(z\) and exact optimum \(z^*\), the reported gap is
 
 \[
 \mathrm{gap}(\%) = 100\,\frac{z-z^*}{z^*}.
 \]
 
-The purpose is to treat NCO as an optimization method, not merely as a neural-network demonstration.
+This makes it possible to ask the optimization question that matters: how much solution quality is being traded for learned inference speed?
 
 ## Tests
 
@@ -119,7 +136,7 @@ ruff format --check .
 
 ## Research roadmap
 
-Planned extensions include rollout baselines, multi-start decoding, exact Held-Karp comparisons for small instances, size/distribution generalization experiments, CVRP support, and learned improvement operators.
+Planned extensions include rollout baselines, multi-start decoding, size/distribution generalization experiments, CVRP support, learned improvement operators, and benchmark datasets beyond synthetic uniform Euclidean instances.
 
 ## References
 
@@ -127,6 +144,7 @@ Planned extensions include rollout baselines, multi-start decoding, exact Held-K
 2. Bello, I. et al. (2016). Neural Combinatorial Optimization with Reinforcement Learning. arXiv:1611.09940.
 3. Dai, H. et al. (2017). Learning Combinatorial Optimization Algorithms over Graphs. NeurIPS.
 4. Kool, W., van Hoof, H., & Welling, M. (2019). Attention, Learn to Solve Routing Problems! ICLR.
+5. Held, M., & Karp, R. M. (1962). A Dynamic Programming Approach to Sequencing Problems. Journal of the Society for Industrial and Applied Mathematics.
 
 ## License
 

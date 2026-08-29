@@ -11,11 +11,22 @@ from nco.problems import generate_euclidean_tsp
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Evaluate an NCO TSP policy against heuristics.")
+    parser = argparse.ArgumentParser(description="Evaluate an NCO TSP policy against baselines.")
     parser.add_argument("--nodes", type=int, default=20)
     parser.add_argument("--instances", type=int, default=128)
     parser.add_argument("--seed", type=int, default=123)
     parser.add_argument("--checkpoint", type=Path)
+    parser.add_argument(
+        "--exact",
+        action="store_true",
+        help="Compute Held-Karp exact optima and optimality gaps for small instances.",
+    )
+    parser.add_argument(
+        "--max-exact-nodes",
+        type=int,
+        default=12,
+        help="Safety cap for exponential Held-Karp evaluation.",
+    )
     return parser.parse_args()
 
 
@@ -30,7 +41,12 @@ def main() -> None:
         model.load_state_dict(payload["model_state_dict"])
 
     coords = generate_euclidean_tsp(args.instances, args.nodes, device=device)
-    metrics = evaluate_batch(model, coords)
+    metrics = evaluate_batch(
+        model,
+        coords,
+        exact=args.exact,
+        max_exact_nodes=args.max_exact_nodes,
+    )
     for key, value in metrics.items():
         print(f"{key}: {value:.6f}")
 
