@@ -19,19 +19,16 @@ This is an educational/research implementation, not a reproduction claiming pape
 
 ## Features
 
-- Uniform Euclidean TSP instance generation
-- Clustered TSP instance generation for distribution-shift experiments
+- Uniform and clustered Euclidean TSP generation
 - Tour-length and feasibility utilities
-- Nearest-neighbor baseline
-- 2-opt local search baseline
+- Nearest-neighbor and 2-opt baselines
 - Exact Held-Karp dynamic programming for small instances
 - Transformer-style encoder with attention decoder
-- Greedy and sampling decoding
-- REINFORCE training with a moving-average baseline
+- Greedy, sampling, and multi-start stochastic decoding
+- REINFORCE training with moving-average or rollout baseline
 - Optimality-gap evaluation against exact solutions
-- Size generalization benchmark across multiple node counts
-- Distribution generalization benchmark: uniform vs clustered instances
-- Unit tests for feasibility, decoding, geometry, heuristics, exact optimization, and shifted data generation
+- Size and distribution generalization benchmarks
+- Unit tests for decoding, baselines, exact optimization, and shifted data generation
 - GitHub Actions CI with pytest and Ruff
 
 ## Project structure
@@ -42,6 +39,7 @@ This is an educational/research implementation, not a reproduction claiming pape
 │   ├── problems/tsp.py
 │   ├── models/policy.py
 │   ├── training/reinforce.py
+│   ├── decoding.py
 │   ├── heuristics.py
 │   ├── exact.py
 │   └── evaluation.py
@@ -68,26 +66,69 @@ pip install -e ".[dev]"
 
 ## Quick start
 
-Train on randomly generated Euclidean TSP instances:
+Train with the lightweight moving-average baseline:
 
 ```bash
 python scripts/train.py --nodes 20 --steps 1000 --batch-size 128
 ```
 
-Evaluate an untrained or saved model against heuristics:
+Train with a frozen greedy rollout baseline that is refreshed every 100 updates:
+
+```bash
+python scripts/train.py \
+  --nodes 20 \
+  --steps 1000 \
+  --baseline rollout \
+  --rollout-update-every 100
+```
+
+Evaluate greedy decoding against heuristics:
 
 ```bash
 python scripts/evaluate.py --nodes 20 --instances 128
-python scripts/evaluate.py --nodes 20 --instances 128 --checkpoint checkpoints/nco_tsp.pt
 ```
 
-For small instances, add an exact Held-Karp benchmark and report optimality gaps:
+Evaluate with 16 stochastic starts per instance and retain the best sampled tour:
 
 ```bash
-python scripts/evaluate.py --nodes 10 --instances 32 --exact
+python scripts/evaluate.py \
+  --nodes 20 \
+  --instances 128 \
+  --checkpoint checkpoints/nco_tsp.pt \
+  --rollouts 16
+```
+
+For small instances, combine multi-start decoding with exact Held-Karp optimality gaps:
+
+```bash
+python scripts/evaluate.py --nodes 10 --instances 32 --rollouts 16 --exact
 ```
 
 Held-Karp has exponential complexity, so exact evaluation is capped at 12 nodes by default. The cap can be changed explicitly with `--max-exact-nodes`, but increasing it can become expensive quickly.
+
+## Multi-start decoding
+
+A single greedy decode is fast but can hide useful probability mass in the learned policy. Multi-start decoding samples `K` complete tours for each instance and returns the minimum-cost sample:
+
+\[
+\hat{\pi}(x)=\arg\min_{\pi \in \{\pi_1,\ldots,\pi_K\}} L(\pi).
+\]
+
+This exposes an explicit solution-quality versus inference-compute trade-off. Increasing `--rollouts` can improve solution quality but scales neural decoding work approximately linearly in the number of samples.
+
+When exact evaluation is enabled, the evaluator also reports `multi_start_mean_gap_pct` relative to Held-Karp.
+
+## Rollout baseline
+
+REINFORCE can have high gradient variance. The rollout baseline keeps a frozen copy of the policy, decodes the same training instances greedily, and uses those per-instance tour costs as the baseline:
+
+\[
+A(x,\pi)=L(\pi)-L(\pi_{\text{baseline}}).
+\]
+
+The frozen policy is refreshed from the current training policy every `--rollout-update-every` updates. This is more informative than a single scalar moving average because the baseline difficulty adapts to each TSP instance.
+
+This implementation uses a periodic snapshot rather than claiming to reproduce the statistical model-selection procedure of any specific paper.
 
 ## Generalization benchmark
 
@@ -109,24 +150,12 @@ python scripts/benchmark_generalization.py \
   --instances 128
 ```
 
-The script prints CSV-compatible rows with:
-
-- distribution,
-- test node count,
-- test/train size ratio,
-- neural mean tour cost,
-- nearest-neighbor mean tour cost,
-- 2-opt mean tour cost,
-- neural feasibility rate.
-
 Two shifts are intentionally separated:
 
 1. **Size shift:** the model is trained on one graph size and evaluated on larger graph sizes.
 2. **Distribution shift:** the model is trained on uniform random coordinates and evaluated on clustered coordinates.
 
 The clustered generator samples random cluster centers and places nodes around those centers with Gaussian noise, clipped to the unit square. Use `--clusters` and `--cluster-std` to control the shift severity.
-
-The raw tour cost grows with instance size, so size-shift results should not be interpreted only through absolute cost. Compare the neural policy against the same-instance heuristic baselines and, for sufficiently small instances, against the exact Held-Karp optimum.
 
 ## What is optimized?
 
@@ -140,34 +169,20 @@ L(\pi)=\sum_{t=1}^{n-1}\lVert x_{\pi_t}-x_{\pi_{t+1}}\rVert_2
 The neural policy defines a distribution over permutations. REINFORCE minimizes expected tour length using
 
 \[
-\nabla_\theta J(\theta) \approx (L(\pi)-b)\nabla_\theta \log p_\theta(\pi\mid x),
+\nabla_\theta J(\theta) \approx (L(\pi)-b)\nabla_\theta \log p_\theta(\pi\mid x).
 \]
-
-where \(b\) is a moving-average baseline.
 
 ## Exact benchmark
 
-For small instances the repository uses Held-Karp dynamic programming, which solves TSP exactly in \(O(n^2 2^n)\) time. Exact solutions provide a proper OR benchmark rather than relying only on relative comparisons between heuristics.
+For small instances the repository uses Held-Karp dynamic programming, which solves TSP exactly in \(O(n^2 2^n)\) time.
 
-The evaluator can report:
+The evaluator can report neural, multi-start, nearest-neighbor, 2-opt, and exact mean tour costs; feasibility; runtime; and exact optimality gaps.
 
-- neural mean tour cost,
-- nearest-neighbor mean tour cost,
-- 2-opt mean tour cost,
-- exact mean tour cost,
-- feasibility rate,
-- runtime for each method,
-- neural optimality gap,
-- nearest-neighbor optimality gap,
-- 2-opt optimality gap.
-
-For an obtained cost \(z\) and exact optimum \(z^*\), the reported gap is
+For obtained cost \(z\) and exact optimum \(z^*\):
 
 \[
 \mathrm{gap}(\%) = 100\,\frac{z-z^*}{z^*}.
 \]
-
-This makes it possible to ask the optimization question that matters: how much solution quality is being traded for learned inference speed?
 
 ## Tests
 
@@ -179,7 +194,7 @@ ruff format --check .
 
 ## Research roadmap
 
-Planned extensions include rollout baselines, multi-start decoding, normalized regret/generalization summaries, CVRP support, learned improvement operators, and benchmark datasets beyond synthetic Euclidean instances.
+Planned extensions include normalized regret/generalization summaries, CVRP support, learned improvement operators, benchmark datasets beyond synthetic Euclidean instances, and stronger rollout-baseline update tests.
 
 ## References
 
