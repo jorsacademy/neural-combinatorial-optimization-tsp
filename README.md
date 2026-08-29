@@ -19,7 +19,8 @@ This is an educational/research implementation, not a reproduction claiming pape
 
 ## Features
 
-- Euclidean TSP instance generation
+- Uniform Euclidean TSP instance generation
+- Clustered TSP instance generation for distribution-shift experiments
 - Tour-length and feasibility utilities
 - Nearest-neighbor baseline
 - 2-opt local search baseline
@@ -28,7 +29,9 @@ This is an educational/research implementation, not a reproduction claiming pape
 - Greedy and sampling decoding
 - REINFORCE training with a moving-average baseline
 - Optimality-gap evaluation against exact solutions
-- Unit tests for feasibility, decoding, geometry, heuristics, and exact optimization
+- Size generalization benchmark across multiple node counts
+- Distribution generalization benchmark: uniform vs clustered instances
+- Unit tests for feasibility, decoding, geometry, heuristics, exact optimization, and shifted data generation
 - GitHub Actions CI with pytest and Ruff
 
 ## Project structure
@@ -44,7 +47,8 @@ This is an educational/research implementation, not a reproduction claiming pape
 │   └── evaluation.py
 ├── scripts/
 │   ├── train.py
-│   └── evaluate.py
+│   ├── evaluate.py
+│   └── benchmark_generalization.py
 ├── tests/
 ├── .github/workflows/ci.yml
 ├── pyproject.toml
@@ -84,6 +88,45 @@ python scripts/evaluate.py --nodes 10 --instances 32 --exact
 ```
 
 Held-Karp has exponential complexity, so exact evaluation is capped at 12 nodes by default. The cap can be changed explicitly with `--max-exact-nodes`, but increasing it can become expensive quickly.
+
+## Generalization benchmark
+
+A learned combinatorial optimizer may perform well on the same problem distribution used during training while degrading under size or distribution shift. This repository therefore includes an explicit generalization benchmark.
+
+Train a policy, for example on TSP20:
+
+```bash
+python scripts/train.py --nodes 20 --steps 1000 --checkpoint checkpoints/tsp20.pt
+```
+
+Then evaluate the same checkpoint on TSP20, TSP30, and TSP50 under both uniform and clustered spatial distributions:
+
+```bash
+python scripts/benchmark_generalization.py \
+  --checkpoint checkpoints/tsp20.pt \
+  --train-nodes 20 \
+  --test-nodes 20 30 50 \
+  --instances 128
+```
+
+The script prints CSV-compatible rows with:
+
+- distribution,
+- test node count,
+- test/train size ratio,
+- neural mean tour cost,
+- nearest-neighbor mean tour cost,
+- 2-opt mean tour cost,
+- neural feasibility rate.
+
+Two shifts are intentionally separated:
+
+1. **Size shift:** the model is trained on one graph size and evaluated on larger graph sizes.
+2. **Distribution shift:** the model is trained on uniform random coordinates and evaluated on clustered coordinates.
+
+The clustered generator samples random cluster centers and places nodes around those centers with Gaussian noise, clipped to the unit square. Use `--clusters` and `--cluster-std` to control the shift severity.
+
+The raw tour cost grows with instance size, so size-shift results should not be interpreted only through absolute cost. Compare the neural policy against the same-instance heuristic baselines and, for sufficiently small instances, against the exact Held-Karp optimum.
 
 ## What is optimized?
 
@@ -136,7 +179,7 @@ ruff format --check .
 
 ## Research roadmap
 
-Planned extensions include rollout baselines, multi-start decoding, size/distribution generalization experiments, CVRP support, learned improvement operators, and benchmark datasets beyond synthetic uniform Euclidean instances.
+Planned extensions include rollout baselines, multi-start decoding, normalized regret/generalization summaries, CVRP support, learned improvement operators, and benchmark datasets beyond synthetic Euclidean instances.
 
 ## References
 
