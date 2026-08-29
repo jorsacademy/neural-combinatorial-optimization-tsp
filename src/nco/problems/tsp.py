@@ -21,6 +21,50 @@ def generate_euclidean_tsp(
     return torch.rand(batch_size, n_nodes, 2, device=device, generator=generator)
 
 
+def generate_clustered_tsp(
+    batch_size: int,
+    n_nodes: int,
+    *,
+    n_clusters: int = 4,
+    cluster_std: float = 0.06,
+    device: torch.device | str | None = None,
+    generator: torch.Generator | None = None,
+) -> Tensor:
+    """Generate clustered Euclidean TSP instances clipped to the unit square."""
+    if batch_size <= 0:
+        raise ValueError("batch_size must be positive")
+    if n_nodes < 2:
+        raise ValueError("n_nodes must be at least 2")
+    if n_clusters < 1:
+        raise ValueError("n_clusters must be positive")
+    if cluster_std <= 0:
+        raise ValueError("cluster_std must be positive")
+
+    centers = torch.rand(
+        batch_size,
+        n_clusters,
+        2,
+        device=device,
+        generator=generator,
+    )
+    assignments = torch.randint(
+        n_clusters,
+        (batch_size, n_nodes),
+        device=device,
+        generator=generator,
+    )
+    gather_idx = assignments.unsqueeze(-1).expand(-1, -1, 2)
+    selected_centers = centers.gather(1, gather_idx)
+    noise = torch.randn(
+        batch_size,
+        n_nodes,
+        2,
+        device=device,
+        generator=generator,
+    ) * cluster_std
+    return (selected_centers + noise).clamp_(0.0, 1.0)
+
+
 def tour_length(coords: Tensor, tour: Tensor) -> Tensor:
     """Return closed-tour Euclidean lengths for batched coordinates and permutations."""
     if coords.ndim != 3 or coords.shape[-1] != 2:
